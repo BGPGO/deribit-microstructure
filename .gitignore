@@ -1,0 +1,10 @@
+tardis_data/
+*.exe
+*.csv.gz
+*.parquet
+models/
+catboost_info/
+__pycache__/
+*.log
+result_*.txt
+.venv/

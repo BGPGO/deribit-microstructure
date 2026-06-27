@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset=utf-8>
+<title>Deribit Microstructure</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--bd:#26303d;--fg:#e6edf3;--mut:#8b98a8;--accent:#3fb950}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:18px}
+  h1{font-size:17px;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+  .name{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .stale{color:#f85149}.fresh{color:var(--accent)}
+  table{width:100%;border-collapse:collapse}
+  td{padding:2px 4px}td:first-child{color:var(--mut)}td:nth-child(2){text-align:right;font-variant-numeric:tabular-nums}
+  td:nth-child(3){color:var(--mut);padding-left:16px}td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
+  .k{color:#d29922;font-weight:600}
+  canvas{width:100%;height:48px;display:block;margin-top:8px;background:#0a0e14;border-radius:6px}
+  .lbl{color:var(--mut);font-size:11px;margin-top:6px}
+  .dot{height:7px;width:7px;border-radius:50%;display:inline-block;margin-right:5px}
+</style></head><body>
+<h1>Deribit Microstructure <span style="color:var(--mut);font-weight:400">— medição de mercado &amp; κ</span></h1>
+<div class=sub>read-only · WS público · fills SIMULADOS ($0) · atualiza a cada 0.1s</div>
+<div id=feed style="background:#0a0e14;border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:12px;max-height:160px;overflow:auto">
+  <div class=lbl style="margin:0 0 4px">⚡ FEED DE FILLS FAKE (ao vivo)</div><div id=feedrows>aguardando fills…</div></div>
+<div class=grid id=grid></div>
+<script>
+const fmt=(x,d=2)=> (x==null||isNaN(x))?'—':Number(x).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+function spark(cv,arr,color){
+  if(!arr||arr.length<2)return;
+  const ctx=cv.getContext('2d'),W=cv.width=cv.clientWidth*2,H=cv.height=96;
+  ctx.clearRect(0,0,W,H);
+  let lo=Math.min(...arr),hi=Math.max(...arr);if(hi===lo){hi+=1;lo-=1;}
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+  arr.forEach((v,i)=>{const x=i/(arr.length-1)*W,y=H-(v-lo)/(hi-lo)*(H-8)-4;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+}
+async function feed(){
+  let ev;try{ev=await (await fetch('/api/events')).json();}catch(e){return;}
+  if(!ev||!ev.length){return;}
+  document.getElementById('feedrows').innerHTML = ev.map(e=>{
+    const t=new Date(e.ts).toISOString().substr(11,11);
+    const col = e.book==='SINAL' ? '#d29922' : '#58a6ff';
+    const sc = (e.side==='BUY'||e.side==='LONG') ? '#3fb950':'#f85149';
+    return `<div><span style="color:#667">${t}</span> <span style="color:${col};font-weight:600">${e.book}</span> ${e.inst.replace('-PERPETUAL','')} <span style="color:${sc}">${e.side}</span> @ ${fmt(e.price)}</div>`;
+  }).join('');
+}
+async function tick(){
+  feed();
+  let data;try{data=await (await fetch('/api/metrics')).json();}catch(e){return;}
+  const g=document.getElementById('grid');
+  data.forEach(m=>{
+    let id='c_'+m.name.replace(/[^a-zA-Z0-9]/g,'_');
+    let el=document.getElementById(id);
+    if(!el){el=document.createElement('div');el.className='card';el.id=id;g.appendChild(el);}
+    const stale=m.age_ms>5000, fresh=m.age_ms!=null&&m.age_ms<=5000;
+    el.innerHTML=`
+     <div class=name><span>${m.name}</span>
+       <span class="${stale?'stale':'fresh'}" style="font-size:11px">
+         <span class="dot" style="background:${stale?'#f85149':'var(--accent)'}"></span>${m.age_ms==null?'sem dados':(m.age_ms/1000).toFixed(1)+'s'}</span></div>
+     <table>
+      <tr><td>bid</td><td>${fmt(m.bid)}</td><td>spread</td><td>${fmt(m.spread_bps,2)} bps</td></tr>
+      <tr><td>ask</td><td>${fmt(m.ask)}</td><td>micro-price</td><td>${fmt(m.micro)}</td></tr>
+      <tr><td>mid</td><td>${fmt(m.mid)}</td><td>imbalance</td><td>${fmt(m.imbalance,3)}</td></tr>
+      <tr><td>OFI (5s)</td><td colspan=3 style="text-align:right;color:${m.ofi>0?'#3fb950':'#f85149'}">${fmt(m.ofi,1)} ${m.ofi>0?'(compra)':'(venda)'}</td></tr>
+      <tr><td>bid sz</td><td>${fmt(m.bid_sz,1)}</td><td>ask sz</td><td>${fmt(m.ask_sz,1)}</td></tr>
+      <tr><td class=k>κ (por bp)</td><td class=k>${fmt(m.kappa,4)}</td><td>A (intens.)</td><td>${fmt(m.a_param,3)}</td></tr>
+      <tr><td>trades/min</td><td>${fmt(m.trades_min,1)}</td><td>RV anual</td><td>${m.rv_ann==null?'—':fmt(m.rv_ann*100,1)+'%'}</td></tr>
+     </table>
+     <div class=lbl style="color:#d29922;border-top:1px solid var(--bd);padding-top:6px;margin-top:8px">MAKER GATEADO pelo sinal · markout +5s · net rebate · 30% haircut</div>
+     <table>
+      <tr><td>score (lado)</td><td colspan=3 style="text-align:right;color:${m.sig_score>0?'#3fb950':'#f85149'}">${fmt(m.sig_score,3)} ${m.sig_score>0?'→ posta BID (long)':'→ posta ASK (short)'}</td></tr>
+      <tr><td>σ prev (vol 30s)</td><td>${m.sig_vol==null?'—':fmt(m.sig_vol,2)+'bp'}</td><td>spread widen</td><td>${m.sig_vol_w==null?'—':fmt(m.sig_vol_w,2)+'×'}</td></tr>
+      <tr><td>fills resolvidos</td><td>${m.sig_fills}</td><td>inventário</td><td>${fmt(m.sig_inv,0)}</td></tr>
+      <tr><td>markout/fill</td><td colspan=3 style="text-align:right;font-weight:600;color:${m.sig_mk_avg>0?'#3fb950':'#f85149'}">${m.sig_mk_avg==null?'—':fmt(m.sig_mk_avg,3)+' bps'} (total ${m.sig_mk_sum==null?'—':fmt(m.sig_mk_sum,0)} bps)</td></tr>
+      <tr><td>carteira (banca 1000)</td><td colspan=3 style="text-align:right;font-weight:600;color:${m.sig_pnl_usd>=0?'#3fb950':'#f85149'}">${m.sig_pnl_usd==null?'—':fmt(1000+m.sig_pnl_usd,2)} (${m.sig_pnl_usd>=0?'+':''}${fmt(m.sig_pnl_usd,2)})</td></tr>
+     </table>
+     <div class=lbl>evolução da carteira (banca 1000)</div><canvas id="${id}_eq"></canvas>
+     <div class=lbl style="color:#58a6ff;padding-top:6px">shadow plain/skew (diagnóstico)</div>
+     <table>
+      <tr><td>round-trips p/s</td><td>${m.sm_round}</td><td></td><td class=g>${m.sk_round}</td></tr>
+      <tr><td>inv plain/skew</td><td>${fmt(m.sm_inv,0)}</td><td></td><td class=g>${fmt(m.sk_inv,0)}</td></tr>
+     </table>
+     <div class=lbl>mid (10min)</div><canvas id="${id}_m"></canvas>
+     <div class=lbl>spread bps (10min)</div><canvas id="${id}_s"></canvas>`;
+    spark(document.getElementById(id+'_m'),m.mid_hist,'#58a6ff');
+    spark(document.getElementById(id+'_s'),m.sprd_hist,'#d29922');
+    if(m.sig_equity&&m.sig_equity.length>1) spark(document.getElementById(id+'_eq'),m.sig_equity,m.sig_pnl_usd>=0?'#3fb950':'#f85149');
+  });
+}
+tick();setInterval(tick,100);
+</script></body></html>
