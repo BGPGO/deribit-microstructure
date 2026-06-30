@@ -8,3 +8,13 @@ __pycache__/
 *.log
 result_*.txt
 .venv/
+
+# dados de captura (nao versionar)
+venue_data/
+lighter_data/
+base_data/
+binance_data/
+hl_data/
+*.jsonl
+*.csv
+captures/
