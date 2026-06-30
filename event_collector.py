@@ -28,7 +28,7 @@ FLUSH_S = float(os.environ.get("FLUSH_S", "1"))
 
 buf_book, buf_trade = [], []
 lock = threading.Lock()
-cnt = {"book": 0, "trade": 0}
+cnt = {"binance": {"book": 0, "trade": 0}, "paradex": {"book": 0, "trade": 0}}
 
 DDL = """
 CREATE TABLE IF NOT EXISTS book_events(
@@ -61,9 +61,9 @@ def flusher():
             except: pass
 
 def add_book(v, s, ts, b, bs, a, as_):
-    with lock: buf_book.append((v, s, int(ts), b, bs, a, as_)); cnt["book"] += 1
+    with lock: buf_book.append((v, s, int(ts), b, bs, a, as_)); cnt[v]["book"] += 1
 def add_trade(v, s, ts, px, sz, side):
-    with lock: buf_trade.append((v, s, int(ts), px, sz, side)); cnt["trade"] += 1
+    with lock: buf_trade.append((v, s, int(ts), px, sz, side)); cnt[v]["trade"] += 1
 
 # ---------- Binance ----------
 def binance():
