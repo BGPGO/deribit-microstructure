@@ -118,8 +118,24 @@ def reporter():
     while True:
         time.sleep(30); print(f"[{time.strftime('%H:%M:%S')}] eventos: {cnt}")
 
+def pruner():
+    """capa o disco: mantem rolling ~PRUNE_H horas de book_events (trades sao pequenos, mantem)."""
+    PRUNE_H = float(os.environ.get("PRUNE_H", "30"))
+    while True:
+        time.sleep(1800)
+        try:
+            c = psycopg2.connect(DB); c.autocommit = True
+            with c.cursor() as cur:
+                cur.execute("DELETE FROM book_events WHERE ts_ms < (extract(epoch from now())*1000 - %s)",
+                            (PRUNE_H * 3600 * 1000,))
+                cur.execute("SELECT pg_size_pretty(pg_database_size(current_database()))")
+                print(f"[prune] mantendo {PRUNE_H}h, db={cur.fetchone()[0]}")
+            c.close()
+        except Exception as e:
+            print("prune err:", str(e)[:100])
+
 if __name__ == "__main__":
     db_init()
-    for fn in (flusher, binance, paradex, reporter):
+    for fn in (flusher, binance, paradex, reporter, pruner):
         threading.Thread(target=fn, daemon=True).start()
     while True: time.sleep(3600)
